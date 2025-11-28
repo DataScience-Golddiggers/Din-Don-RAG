@@ -15,3 +15,17 @@ Thumbs.db
 .venv/
 __pycache__/
 *.pyc
+*.pkl
+*.h5
+*.pth
+*.ckpt
+*.ipynb_checkpoints/
+data/raw/*
+data/processed/*
+data/cleaned/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/cleaned/.gitkeep
+models/*.model
+models/*.bin
+.pytest_cache/

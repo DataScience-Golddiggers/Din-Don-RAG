@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  allmand:
+    build: .
+    container_name: allmand-nlp
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEFAULT_LANGUAGE=italian
+    command: jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root
