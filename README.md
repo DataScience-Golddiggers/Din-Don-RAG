@@ -53,7 +53,16 @@ ollama serve
 
 > **Note**: Keep this terminal open. The `OLLAMA_MODELS` path ensures that models pulled by the project are stored within the repo structure.
 
-### 3. Train the Classifier
+### 3. Generate Training Data
+
+If you don't have a dataset, you can generate a synthetic one with university-related questions:
+
+```bash
+# Generate 2000 samples in data/raw/training_dataset.csv
+python scripts/generate_dataset.py
+```
+
+### 4. Train the Classifier
 
 Before starting the services, you must train the relevance classifier.
 
@@ -79,7 +88,7 @@ python scripts/train_pipeline.py \
   --model logistic_regression
 ```
 
-### 4. Run the Application
+### 5. Run the Application
 
 Start the entire stack:
 
