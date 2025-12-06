@@ -26,6 +26,7 @@ data/cleaned/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/cleaned/.gitkeep
-models/*.model
-models/*.bin
+models/*
+!models/.gitkeep
 .pytest_cache/
+

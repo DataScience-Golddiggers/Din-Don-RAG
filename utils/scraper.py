@@ -4,8 +4,8 @@ from typing import List, Dict, Optional
 import time
 from pathlib import Path
 import json
-from src.logger import logger
-from src.config import config
+from utils.logger import logger
+from utils.config import config
 
 
 class WebScraper:

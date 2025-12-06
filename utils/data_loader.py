@@ -1,7 +1,7 @@
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Union
-from src.logger import logger
+from utils.logger import logger
 
 
 class DataLoader:

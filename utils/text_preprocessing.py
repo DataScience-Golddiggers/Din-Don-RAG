@@ -3,7 +3,7 @@ import pandas as pd
 from typing import List, Optional
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
-from nltk.stem import WordNetLemmatizer, PorterStemmer
+from nltk.stem import WordNetLemmatizer, SnowballStemmer
 
 
 class TextPreprocessor:
@@ -18,10 +18,20 @@ class TextPreprocessor:
             print(f"Lingua '{language}' non disponibile, uso 'english'")
             self.stop_words = set(stopwords.words('english'))
         
-        if use_lemmatization:
+        # WordNetLemmatizer is primarily for English. For other languages, we might prefer stemming.
+        # However, keeping the structure as requested.
+        if use_lemmatization and language == 'english':
             self.lemmatizer = WordNetLemmatizer()
         else:
-            self.stemmer = PorterStemmer()
+            # Use SnowballStemmer which supports multiple languages (including Italian)
+            # If lemmatization was requested for non-English, we fallback to stemming or no-op?
+            # Let's fallback to SnowballStemmer as it's the standard for Italian in NLTK.
+            try:
+                self.stemmer = SnowballStemmer(language)
+                self.use_lemmatization = False # Force stemming if not English
+            except ValueError:
+                print(f"Stemmer per '{language}' non disponibile, uso 'english'")
+                self.stemmer = SnowballStemmer("english")
     
     def clean_text(self, text: str) -> str:
         if pd.isna(text):
@@ -42,7 +52,8 @@ class TextPreprocessor:
         if pd.isna(text) or text == '':
             return []
         
-        tokens = word_tokenize(str(text))
+        # Pass language to word_tokenize to use the correct punkt model
+        tokens = word_tokenize(str(text), language=self.language)
         
         if remove_stopwords:
             tokens = [word for word in tokens if word.lower() not in self.stop_words]

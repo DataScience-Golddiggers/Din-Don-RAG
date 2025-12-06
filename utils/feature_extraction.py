@@ -4,7 +4,7 @@ from typing import List, Tuple, Optional, Dict
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.decomposition import LatentDirichletAllocation, NMF
 from gensim.models import Word2Vec
-from src.logger import logger
+from utils.logger import logger
 
 
 class FeatureExtractor:

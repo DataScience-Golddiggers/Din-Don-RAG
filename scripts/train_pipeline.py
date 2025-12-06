@@ -1,18 +1,42 @@
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add /app to sys.path so we can import from utils (which is mounted at /app/utils)
+# In the container, the structure is:
+# /app/scripts/train_pipeline.py
+# /app/utils/
+# /app/src/ (if mounted, but the error suggests imports are from src.*)
+
+# If the original code imported from src.*, it means it expected a src folder.
+# However, in our Dockerfile/volumes, we have:
+# /app/utils (from ./utils)
+# /app/src (from ./src) - Wait, did we mount src? Yes, in the last step.
+
+# The issue is likely that 'src' is not a package (no __init__.py) or the path is slightly off.
+# Let's check where we are.
+sys.path.append("/app")
 
 import pandas as pd
 import argparse
 from sklearn.model_selection import train_test_split
 
-from src.config import config
-from src.logger import logger
-from src.data_loader import DataLoader
-from src.text_preprocessing import TextPreprocessor
-from src.feature_extraction import FeatureExtractor
-from src.model_trainer import ModelTrainer
-from src.utils import save_object
+# Adjust imports based on the actual structure in the container.
+# The utils folder contains the modules directly (config.py, logger.py, etc.)
+# So it should be 'from utils.config import config' NOT 'from src.config import config'
+# UNLESS the original project structure had these inside src/ and we are reusing that code.
+# Looking at the file list from the beginning:
+# utils/
+#   config.py
+#   logger.py
+#   ...
+# So the correct import is 'from utils.config import config'
+
+from utils.config import config
+from utils.logger import logger
+from utils.data_loader import DataLoader
+from utils.text_preprocessing import TextPreprocessor
+from utils.feature_extraction import FeatureExtractor
+from utils.model_trainer import ModelTrainer
+from utils.utils import save_object
 
 
 def main(args):

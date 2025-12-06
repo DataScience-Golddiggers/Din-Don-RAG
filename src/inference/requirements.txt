@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+scikit-learn
+pandas
+numpy
+requests
+joblib
+nltk
+python-dotenv
+gensim
+beautifulsoup4
+matplotlib
+seaborn
+wordcloud

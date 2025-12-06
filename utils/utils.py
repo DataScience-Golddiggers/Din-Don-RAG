@@ -6,7 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from wordcloud import WordCloud
-from src.logger import logger
+from utils.logger import logger
 
 
 def save_object(obj: Any, file_path: Path):

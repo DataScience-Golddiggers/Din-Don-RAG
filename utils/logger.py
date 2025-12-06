@@ -2,7 +2,7 @@ import logging
 import sys
 from pathlib import Path
 from typing import Optional
-from src.config import config
+from utils.config import config
 
 
 def setup_logger(

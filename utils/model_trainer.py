@@ -11,8 +11,8 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
-from src.logger import logger
-from src.config import config
+from utils.logger import logger
+from utils.config import config
 
 
 class ModelTrainer:
