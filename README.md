@@ -1,4 +1,19 @@
-# UnivPM AI Assistant
+# ALLMond Assistant
+
+<div style="height; overflow:hidden; margin:auto; margin-bottom:2rem" align="center">
+  <img src="./docs/images/rdm1.png" style="width:100%; height:50%; object-fit:cover; object-position:center;" />
+</div>
+
+[![Python](https://img.shields.io/badge/Python-3.10-3776ab?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+![Docker](https://img.shields.io/badge/Docker-2CA5E0?style=for-the-badge&logo=docker&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
+![NGROK](https://img.shields.io/badge/ngrok-140648?style=for-the-badge&logo=Ngrok&logoColor=white)
+![Ollama](https://img.shields.io/badge/Ollama-FFFFFF?style=for-the-badge&logo=ollama&logoColor=black)
+![Qwen](https://img.shields.io/badge/Qwen-3-blue?style=for-the-badge)
+![Gmail](https://img.shields.io/badge/Gmail-D14836?style=for-the-badge&logo=gmail&logoColor=white)
+![Telegram](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)
+![macOS](https://img.shields.io/badge/mac%20os-000000?style=for-the-badge&logo=apple&logoColor=white)
+[![License](https://img.shields.io/badge/MIT-green?style=for-the-badge)](LICENSE)
 
 A containerized AI-powered web assistant. This solution leverages a microservices architecture to crawl university data, process it via NLP pipelines, and generate context-aware responses using local Large Language Models (LLMs).
 
