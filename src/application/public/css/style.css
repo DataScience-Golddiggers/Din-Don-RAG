@@ -7,7 +7,7 @@
     --card-border: #30363d;
     --primary-color: #58a6ff;
     --success-color: #238636;
-    --success-hover: #2ea043;
+    --success-hover: #dba060;
 }
 
 html {
@@ -109,6 +109,24 @@ h1, h2, h3, h4, h5, h6 {
 
 .nav-link:hover {
     color: #ffffff !important;
+}
+
+/* Form Control Overrides */
+.form-control {
+    background-color: var(--bg-color);
+    border-color: var(--card-border);
+    color: var(--text-main);
+}
+
+.form-control:focus {
+    background-color: var(--bg-color);
+    border-color: var(--primary-color);
+    color: var(--text-main);
+    box-shadow: 0 0 0 0.25rem rgba(88, 166, 255, 0.25);
+}
+
+.form-control::placeholder {
+    color: var(--text-muted);
 }
 
 
