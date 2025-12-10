@@ -4,6 +4,7 @@ scikit-learn
 pandas
 numpy
 requests
+httpx
 joblib
 nltk
 python-dotenv
@@ -12,3 +13,6 @@ beautifulsoup4
 matplotlib
 seaborn
 wordcloud
+langchain
+langchain-community
+langchain-ollama

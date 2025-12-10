@@ -1,16 +1,20 @@
+import os
+import sys
+from typing import Optional, List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import os
 import joblib
-import requests
-import json
-from typing import Optional
-import sys
+import httpx
+# LangChain imports
+from langchain_ollama import ChatOllama
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
 
 # Add /app to path to import utils
 sys.path.append("/app")
-
 from utils.text_preprocessing import TextPreprocessor
+
 
 app = FastAPI()
 
@@ -20,7 +24,11 @@ CRAWLER_URL = os.getenv("CRAWLER_URL", "http://crawler:8001")
 MODEL_PATH = "/app/models/logistic_regression.pkl"
 VECTORIZER_PATH = "/app/models/vectorizer.pkl"
 
-# Models
+# Model names
+SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "qwen3:0.6b")
+QA_MODEL = os.getenv("QA_MODEL", "qwen3:1.7b")
+
+# Models DTOs
 class AskRequest(BaseModel):
     question: str
 
@@ -29,16 +37,18 @@ class AskResponse(BaseModel):
     relevant: bool
     context_used: bool
 
-# Global variables for loaded models
+# Global variables
 classifier = None
 vectorizer = None
 preprocessor = None
+llm_summary = None
+llm_qa = None
 
 @app.on_event("startup")
 async def startup_event():
-    global classifier, vectorizer, preprocessor
+    global classifier, vectorizer, preprocessor, llm_summary, llm_qa
     
-    # Load NLP models
+    # 1. Load Scikit-Learn Models (Classification)
     try:
         if os.path.exists(MODEL_PATH) and os.path.exists(VECTORIZER_PATH):
             classifier = joblib.load(MODEL_PATH)
@@ -49,98 +59,172 @@ async def startup_event():
     except Exception as e:
         print(f"Error loading models: {e}")
 
-    # Initialize preprocessor
+    # 2. Initialize Preprocessor
     preprocessor = TextPreprocessor(language="italian")
     
-    # Pull Ollama models (fire and forget or wait?)
-    # We'll try to pull them. This might take time.
-    # Ideally this should be done in the Ollama container entrypoint or manually.
-    # We will assume they are present or will be pulled on first use (Ollama does this).
+    # 3. Initialize LangChain Ollama Chat Models
+    try:
+        print(f"Initializing Ollama with URL: {OLLAMA_URL}")
+        llm_summary = ChatOllama(
+            base_url=OLLAMA_URL,
+            model=SUMMARY_MODEL,
+            temperature=0.2
+        )
+        llm_qa = ChatOllama(
+            base_url=OLLAMA_URL,
+            model=QA_MODEL,
+            temperature=0.7
+        )
+        print("LangChain Ollama instances initialized.")
+    except Exception as e:
+        print(f"Error initializing LangChain Ollama: {e}")
+
+
+def classify_relevance(question: str) -> bool:
+    """Returns True if the question is relevant using the loaded classifier."""
+    if not classifier or not vectorizer:
+        # If classifier is missing, we assume relevant to allow usage.
+        return True
+        
+    cleaned_question = preprocessor.preprocess(question)
+    X = vectorizer.transform([cleaned_question])
+    prediction = classifier.predict(X)[0]
+    return bool(prediction == 1)
+
+async def crawl_content() -> str:
+    """Fetches content from the crawler service asynchronously."""
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        try:
+            print(f"Richiesta al crawler inviata a {CRAWLER_URL}/crawl...")
+            response = await client.post(f"{CRAWLER_URL}/crawl", json={"urls": []})
+            
+            if response.status_code != 200:
+                print(f"Crawler service returned status {response.status_code}: {response.text}")
+                return ""
+                
+            crawl_data = response.json()
+            # Default to empty list if results key is missing or None
+            results = crawl_data.get("results") or []
+            
+            full_text = ""
+            for i, res in enumerate(results):
+                try:
+                    url = res.get("url", "unknown_url")
+                    success = res.get("success", False)
+                    
+                    if success:
+                        content = res.get("content")
+                        if content is None:
+                            print(f"Warning: Result {i} for {url} success=True but content is None")
+                            continue
+                            
+                        if not isinstance(content, str):
+                            print(f"Warning: Result {i} for {url} content is not string (type: {type(content)})")
+                            content = str(content)
+                            
+                        full_text += content + "\n\n"
+                    else:
+                        error_msg = res.get("error", "Unknown error")
+                        print(f"Failed to crawl specific URL: {url} - Error: {error_msg}")
+                except Exception as inner_e:
+                    print(f"Error processing result {i}: {inner_e}")
+            
+            if not full_text:
+                print("Crawler returned no text content.")
+                
+            return full_text
+            
+        except Exception as e:
+            # Print full stack trace or detailed error to debug 'NoneType' issues
+            import traceback
+            traceback.print_exc()
+            print(f"Crawler request failed completely: {e}")
+            return ""
 
 @app.post("/ask", response_model=AskResponse)
 async def ask(request: AskRequest):
-    global classifier, vectorizer
-    
-    if not classifier or not vectorizer:
-        # Fallback if models are missing: assume relevant for testing? 
-        # Or return error. User wants classifier.
-        # Let's return error to force training.
-        raise HTTPException(status_code=503, detail="Classifier models not loaded. Please train the model first.")
+    # 1. Classification (Relevance Check)
+    # We still check if the question is about the University, but we don't judge the content yet.
+    try:
+        is_relevant = classify_relevance(request.question)
+        if not is_relevant:
+            return AskResponse(
+                answer="La tua domanda non sembra essere pertinente con l\'argomento trattato (Università Politecnica delle Marche).",
+                relevant=False,
+                context_used=False
+            )
+    except Exception as e:
+        print(f"Classification error: {e}")
+        # Proceed if check fails
 
-    # 1. Preprocess Question
-    # We need to preprocess just like training.
-    # TextPreprocessor.preprocess returns a string.
-    cleaned_question = preprocessor.preprocess(request.question)
+    # 2. Retrieval (Crawling)
+    # Now correctly awaited and async
+    raw_content = await crawl_content()
     
-    # 2. Vectorize
-    # vectorizer.transform expects an iterable
-    X = vectorizer.transform([cleaned_question])
-    
-    # 3. Classify
-    prediction = classifier.predict(X)[0] # 0 or 1
-    
-    if prediction == 0:
+    # If crawling fails completely or returns nothing, we can't do RAG.
+    if not raw_content:
         return AskResponse(
-            answer="La tua domanda non sembra essere pertinente con l'argomento trattato (Università Politecnica delle Marche).",
-            relevant=False,
+            answer="Non sono riuscito a recuperare le informazioni dai siti web dell\'Università.",
+            relevant=True,
             context_used=False
         )
-    
-    # 4. Crawl
-    try:
-        crawl_response = requests.post(f"{CRAWLER_URL}/crawl", json={"urls": []}) # Empty list uses hardcoded defaults
-        crawl_data = crawl_response.json()
-        results = crawl_data.get("results", [])
-    except Exception as e:
-        print(f"Crawler error: {e}")
-        return AskResponse(answer="Si è verificato un errore nel recupero delle informazioni.", relevant=True, context_used=False)
 
-    # 5. Aggregate Content
-    full_text = ""
-    for res in results:
-        if res.get("success"):
-            full_text += res.get("content", "") + "\n\n"
-            
-    if not full_text:
-        return AskResponse(answer="Non sono riuscito a trovare informazioni aggiornate.", relevant=True, context_used=False)
+    # 3. LangChain Processing
+    
+    # A. Summarization Chain
+    # We truncate input to avoid context window explosion before summarization if needed.
+    truncated_content = raw_content[:15000] 
+    
+    summary_template = """Sei un assistente utile. Riassumi il seguente testo estratto dal sito web dell\'Università.
+Mantieni tutte le informazioni rilevanti, date, scadenze e contatti. Rimuovi solo le parti puramente tecniche o di navigazione (menu, cookie policy, ecc).
 
-    # 6. Summarize (using qwen3:0.6b)
-    # Truncate full_text to avoid context limit issues if too large
-    truncated_text = full_text[:10000] 
+Testo:
+{text}
+
+Riassunto:"""
     
-    summary_prompt = f"Riassumi il seguente testo rimuovendo le parti inutili e mantenendo le informazioni chiave sull'Università:\n\n{truncated_text}"
-    
+    summary_prompt = PromptTemplate.from_template(summary_template)
+    summarize_chain = summary_prompt | llm_summary | StrOutputParser()
+
     try:
-        summary_res = requests.post(f"{OLLAMA_URL}/api/generate", json={
-            "model": "qwen3:0.6b",
-            "prompt": summary_prompt,
-            "stream": False
-        })
-        summary = summary_res.json().get("response", "")
+        # Execute Summarization
+        print("Inizio riassunto...")
+        summary_text = await summarize_chain.ainvoke({"text": truncated_content})
+        print("Riassunto completato.")
     except Exception as e:
         print(f"Summarization error: {e}")
-        summary = truncated_text[:2000] # Fallback to raw text
+        summary_text = truncated_content[:3000] # Fallback to raw text
 
-    # 7. Answer (using qwen3:1.7b)
-    qa_prompt = f"Contesto:\n{summary}\n\nDomanda: {request.question}\n\nRispondi alla domanda basandoti solo sul contesto fornito. Se non trovi la risposta nel contesto, dillo."
-    
+    # B. QA Chain
+    qa_template = """Sei un assistente intelligente che risponde alla domanda dell\'utente basandoti SOLO sul contesto fornito qui sotto.
+
+                    Contesto:
+                    {context}
+
+                    Domanda: {question}
+
+                    Risposta:"""
+
+    qa_prompt = PromptTemplate.from_template(qa_template)
+    qa_chain = qa_prompt | llm_qa | StrOutputParser()
+
     try:
-        answer_res = requests.post(f"{OLLAMA_URL}/api/generate", json={
-            "model": "qwen3:1.7b",
-            "prompt": qa_prompt,
-            "stream": False
+        # Execute QA
+        print("Generazione risposta...")
+        answer_text = await qa_chain.ainvoke({
+            "context": summary_text,
+            "question": request.question
         })
-        answer = answer_res.json().get("response", "")
     except Exception as e:
         print(f"QA error: {e}")
-        answer = "Si è verificato un errore nella generazione della risposta."
+        answer_text = "Si è verificato un errore durante la generazione della risposta."
 
     return AskResponse(
-        answer=answer,
+        answer=answer_text,
         relevant=True,
         context_used=True
     )
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "ollama_url": OLLAMA_URL}

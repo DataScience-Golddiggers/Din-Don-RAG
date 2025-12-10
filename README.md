@@ -59,7 +59,7 @@ To utilize your host's GPU and share models with the project, you must configure
 
 ```bash
 # Run this from the project root
-export OLLAMA_HOST=0.0.0.0
+export OLLAMA_HOST=0.0.0.0 \
 export OLLAMA_MODELS=$(pwd)/models/models
 
 # Start the server
