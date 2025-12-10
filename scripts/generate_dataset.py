@@ -157,6 +157,38 @@ def generate_dataset(output_file, num_samples=1000):
             "Come rinuncio al posto alloggio?",
             "Dove si trovano le residenze universitarie?",
             "C'è un servizio di foresteria?"
+        ],
+        "irrelevant": [
+            "Che tempo fa oggi?",
+            "Chi ha vinto lo scudetto?",
+            "Mi consigli una ricetta per la carbonara?",
+            "Quanto dista la luna dalla terra?",
+            "Qual è il miglior film del 2024?",
+            "Come si cambia una ruota?",
+            "Raccontami una barzelletta.",
+            "Chi è il presidente degli Stati Uniti?",
+            "Qual è la capitale della Francia?",
+            "Come si fa il nodo alla cravatta?",
+            "Cosa c'è stasera in TV?",
+            "Mi consigli un ristorante cinese?",
+            "Quanto costa un biglietto per il cinema?",
+            "Come si cura il mal di gola?",
+            "Qual è il significato della vita?",
+            "Scrivimi una poesia.",
+            "Chi ha scoperto l'America?",
+            "Come si gioca a scacchi?",
+            "Qual è il tuo colore preferito?",
+            "Fai un salto.",
+            "Genera un numero casuale.",
+            "Parliamo di politica.",
+            "Cosa ne pensi dell'intelligenza artificiale?",
+            "Mi serve un idraulico.",
+            "Dove posso comprare delle scarpe?",
+            "Qual è la velocità della luce?",
+            "Chi sono i Beatles?",
+            "Come si pianta un albero?",
+            "Perché il cielo è blu?",
+            "Dimmi il tuo nome."
         ]
     }
 

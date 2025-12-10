@@ -69,7 +69,15 @@ def main(args):
     )
     
     if args.label_column in df_processed.columns:
-        y = df_processed[args.label_column].values
+        if args.binary:
+            logger.info("Converting labels to binary (relevant=1, irrelevant=0)")
+            # Map 'irrelevant' to 0, everything else to 1
+            df_processed['binary_label'] = df_processed[args.label_column].apply(
+                lambda x: 0 if str(x).lower() == 'irrelevant' else 1
+            )
+            y = df_processed['binary_label'].values
+        else:
+            y = df_processed[args.label_column].values
         
         logger.info("Splitting data into train/test sets")
         X_train, X_test, y_train, y_test = train_test_split(
@@ -176,6 +184,11 @@ if __name__ == "__main__":
         dest="remove_stopwords",
         action="store_false",
         help="Keep stopwords"
+    )
+    parser.add_argument(
+        "--binary",
+        action="store_true",
+        help="Train a binary relevance classifier (1=relevant, 0=irrelevant)"
     )
     
     parser.set_defaults(lemmatization=True, remove_stopwords=True)

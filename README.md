@@ -86,11 +86,7 @@ Start the services first, then run the training script inside the container:
 
 ```bash
 docker-compose up -d
-docker-compose exec ai-service python scripts/train_pipeline.py \
-  --input-file "data/raw/training_dataset.csv" \
-  --text-column "question" \
-  --label-column "label" \
-  --model logistic_regression
+docker-compose exec ai-service python scripts/train_pipeline.py --input-file "data/raw/training_dataset.csv" --text-column "question" --label-column "label" --model logistic_regression
 ```
 
 **Option B: Local Python**
