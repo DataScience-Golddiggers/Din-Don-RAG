@@ -6,14 +6,14 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10-3776ab?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 ![Docker](https://img.shields.io/badge/Docker-2CA5E0?style=for-the-badge&logo=docker&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
 ![NGROK](https://img.shields.io/badge/ngrok-140648?style=for-the-badge&logo=Ngrok&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-FFFFFF?style=for-the-badge&logo=ollama&logoColor=black)
+![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
 ![Qwen](https://img.shields.io/badge/Qwen-3-blue?style=for-the-badge)
-![Gmail](https://img.shields.io/badge/Gmail-D14836?style=for-the-badge&logo=gmail&logoColor=white)
-![Telegram](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)
 ![macOS](https://img.shields.io/badge/mac%20os-000000?style=for-the-badge&logo=apple&logoColor=white)
 [![License](https://img.shields.io/badge/MIT-green?style=for-the-badge)](LICENSE)
+
+<!-- ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white) -->
 
 A containerized AI-powered web assistant. This solution leverages a microservices architecture to crawl university data, process it via NLP pipelines, and generate context-aware responses using local Large Language Models (LLMs).
 
@@ -22,9 +22,9 @@ A containerized AI-powered web assistant. This solution leverages a microservice
 The system is composed of the following Docker services:
 
 - **`webapp`**: Node.js/Express/TypeScript frontend (MVC) with Bootstrap 5. Handles user interaction and request concurrency locking.
-- **`ai-service`**: Python/FastAPI backend. Orchestrates the NLP pipeline:
+- **`ai-service`**: Python/FastAPI backend. Orchestrates the NLP pipeline using **LangChain**:
   - **Classification**: Scikit-learn Logistic Regression to filter relevant queries.
-  - **RAG (Retrieval-Augmented Generation)**: Summarization and QA using Qwen models via Ollama.
+  - **RAG (Retrieval-Augmented Generation)**: Summarization and QA chains powered by Qwen models via Ollama.
 - **`crawler`**: Python/FastAPI service using `crawl4ai` (Playwright) to fetch live content from UnivPM.
 - **`ollama`**: (Optional) Containerized LLM inference server. Can be replaced by a local instance for better performance on Apple Silicon/GPU.
 - **`ngrok`**: Exposes the application to the public internet.
@@ -139,5 +139,6 @@ docker-compose up --build
 ## 🤖 Models Used
 
 - **Classifier**: Logistic Regression (Scikit-learn)
+- **Orchestration**: LangChain (Python)
 - **Summarization**: `qwen3:0.6b` (via Ollama)
 - **QA/Chat**: `qwen3:1.7b` (via Ollama)
