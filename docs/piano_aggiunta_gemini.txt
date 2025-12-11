@@ -1,0 +1,95 @@
+NOME FILE: PIANO_IMPLEMENTAZIONE_ALLMOND_V2.txt
+DATA: 11/12/2025
+PROGETTO: ALLMond v2.0 - Integrazione Analytics & Database Vettoriale
+
+--------------------------------------------------------------------------------
+1. OBIETTIVI DELL'IMPLEMENTAZIONE
+--------------------------------------------------------------------------------
+L'obiettivo è evolvere l'applicazione ALLMond (attualmente RAG on-the-fly) in un sistema 
+persistente e ibrido che supporti:
+1. RAG Canonico: Uso di PostgreSQL + pgvector per persistenza della conoscenza.
+2. Data Analytics: Generazione dinamica di dashboard (EJS/Chart.js) interrogando dati strutturati.
+3. Interactive Refinement: Possibilità per l'utente di correggere grafici e query via chat.
+4. Hardware Target: MacBook Pro M4 Pro (uso ottimale di Docker e RAM).
+
+--------------------------------------------------------------------------------
+2. ARCHITETTURA AGGIORNATA
+--------------------------------------------------------------------------------
+- Container DB: PostgreSQL 16 con estensione `pgvector` (Sostituisce database in-memory).
+- Container App (Node.js): Gestione sessioni utente, routing, rendering EJS.
+- Container Inference (Python): Logica RAG, interfacciamento Gemini API, LangChain.
+- Container Crawler: Invariato (popola la tabella vettoriale 'documenti').
+
+--------------------------------------------------------------------------------
+3. FASE 1: INFRASTRUTTURA DATI (PostgreSQL)
+--------------------------------------------------------------------------------
+Azione 1.1: Aggiornamento Docker Compose
+    - Sostituire l'eventuale DB esistente o aggiungerne uno nuovo usando l'immagine `pgvector/pgvector:pg16`.
+    - Configurare volume persistente per i dati.
+    - Esporre porta 5432 per debug locale.
+
+Azione 1.2: Definizione Schema (DDL)
+    - Creare script `init.sql` con lo schema ER fornito (STUDENTE, CORSO, ESAME, ecc.).
+    - Aggiungere tabelle di supporto AI:
+      1. `rag_documents`: id, content, metadata, embedding (vector).
+      2. `db_schema_info`: id, table_name, description, ddl, embedding (vector) -> Per RAG sullo schema.
+      3. `dashboard_history`: id, user_query, generated_sql, generated_ejs, context_json.
+
+Azione 1.3: Data Seeding (FONDAMENTALE)
+    - Sviluppare script `scripts/seed_db.py` (usando libreria `faker`).
+    - Popolare il DB con dati realistici: ~500 studenti, corsi di laurea reali UnivPM, storico esami e appelli.
+    - Senza dati, le dashboard generate da Gemini saranno vuote.
+
+--------------------------------------------------------------------------------
+4. FASE 2: BACKEND AI & RAG IBRIDO
+--------------------------------------------------------------------------------
+Azione 2.1: Configurazione LangChain Postgres
+    - Installare `langchain-postgres` e `psycopg2-binary` nel servizio Python.
+    - Configurare la connessione al DB containerizzato.
+
+Azione 2.2: Indicizzazione dello Schema (Semantic Router)
+    - Creare script per indicizzare le descrizioni delle tabelle SQL.
+    - Esempio: La tabella "ESAME" viene vettorializzata con descrizione "Contiene voti, lodi ed esiti degli studenti".
+    - Questo permette a Gemini di capire quali tabelle interrogare senza dover leggere tutto lo schema ogni volta (risparmio token).
+
+Azione 2.3: Implementazione Text-to-SQL Chain
+    - Input: Domanda utente (es. "Media voti per anno").
+    - Step 1: Ricerca vettoriale su `db_schema_info` per trovare tabelle rilevanti.
+    - Step 2: Prompt a Gemini con le sole tabelle rilevanti.
+    - Step 3: Generazione SQL.
+    - Step 4: Esecuzione SQL su Postgres (usare utente DB con permessi READ-ONLY per sicurezza).
+
+--------------------------------------------------------------------------------
+5. FASE 3: GENERAZIONE DASHBOARD (Gemini -> EJS)
+--------------------------------------------------------------------------------
+Azione 3.1: Logica Data-to-Visualization
+    - Input: JSON risultante dalla query SQL + Richiesta Utente.
+    - Prompt Gemini: "Agisci come Frontend Developer. Usa Chart.js. Genera snippet HTML/JS per visualizzare questi dati JSON."
+    - Output: Stringa HTML contenente `<canvas>` e script di configurazione.
+
+Azione 3.2: Integrazione Frontend
+    - Creare vista `dashboard.ejs` nel container Node.js.
+    - La vista deve accettare una variabile `aiContent` che inietta l'HTML generato.
+    - Includere Chart.js via CDN nell'head della pagina.
+
+--------------------------------------------------------------------------------
+6. FASE 4: LOOP DI CORREZIONE (Human-in-the-loop)
+--------------------------------------------------------------------------------
+Azione 4.1: Gestione Stato Conversazione
+    - Quando viene generata una dashboard, salvare in `dashboard_history` l'ID e i dati usati.
+    - Restituire questo ID al frontend.
+
+Azione 4.2: Implementazione API di Refinement
+    - Creare endpoint `/refine-dashboard`.
+    - Input: `dashboard_id`, `user_correction` (es. "Cambia in grafico a torta").
+    - Logica:
+      A. Recuperare record storico.
+      B. Inviare a Gemini: Vecchio Codice + Dati JSON + Richiesta Utente.
+      C. Gemini rigenera solo la parte visiva (se i dati non cambiano) o richiede nuovo SQL (se i dati cambiano).
+
+--------------------------------------------------------------------------------
+7. NOTE TECNICHE E SICUREZZA
+--------------------------------------------------------------------------------
+- Sicurezza SQL: Creare un utente Postgres specifico `ai_readonly` che può fare solo SELECT. Gemini userà questo utente.
+- Privacy: Evitare di inviare colonne con PII (nomi studenti, email, CF) a Gemini se non strettamente necessario per l'etichetta del grafico.
+- Performance M4 Pro: Allocare almeno 4-6GB di RAM a Docker per permettere a Postgres di mantenere gli indici vettoriali in memoria.

@@ -1,11 +1,12 @@
 <%- include('partials/header') %>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <div class="container mt-5">
     <h1>Chat con l'Assistente</h1>
 
-    <div class="card shadow chat-container d-flex flex-column mt-2 mb-5" style="max-height:25rem;" id="chatContainer">
+    <div class="card shadow chat-container d-flex flex-column mt-2 mb-5" style="height: 60vh; max-height: 60vh; overflow-y: auto;" id="chatContainer">
         <div class="message bot-message">
-            Ciao! Come posso aiutarti oggi riguardo l'UnivPM?
+            Ciao! Come posso aiutarti oggi riguardo l'UnivPM? Posso anche mostrarti statistiche su voti e corsi!
         </div>
     </div>
 
@@ -20,13 +21,25 @@
     const userInput = document.getElementById('userInput');
     const sendBtn = document.getElementById('sendBtn');
 
-    function appendMessage(text, isUser) {
+    function appendMessage(content, isUser, isHtml = false) {
         const div = document.createElement('div');
         div.classList.add('message');
         div.classList.add(isUser ? 'user-message' : 'bot-message');
-        div.textContent = text;
+        
+        if (isHtml) {
+            div.innerHTML = content;
+        } else {
+            div.textContent = content;
+        }
+        
         chatContainer.appendChild(div);
         chatContainer.scrollTop = chatContainer.scrollHeight;
+        return div; // Return element to allow further manipulation (e.g. chart rendering)
+    }
+
+    function renderChart(canvasId, config) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        new Chart(ctx, config);
     }
 
     async function sendMessage() {
@@ -50,10 +63,29 @@
 
             if (response.ok) {
                 appendMessage(data.answer, false);
+                
+                // Handle Dashboard / Chart
+                if (data.dashboard_data && data.dashboard_data.chart_config) {
+                    const chartId = 'chart-' + Date.now();
+                    const chartHtml = `
+                        <div class="chart-container" style="position: relative; height:300px; width:100%">
+                            <canvas id="${chartId}"></canvas>
+                        </div>
+                        <small class="text-muted">Generato da SQL: ${data.dashboard_data.sql}</small>
+                    `;
+                    appendMessage(chartHtml, false, true);
+                    
+                    // Render chart after DOM update
+                    setTimeout(() => {
+                        renderChart(chartId, data.dashboard_data.chart_config);
+                    }, 100);
+                }
+
             } else {
                 appendMessage("Errore: " + (data.error || "Impossibile contattare il server."), false);
             }
         } catch (error) {
+            console.error(error);
             appendMessage("Errore di connessione.", false);
         } finally {
             userInput.disabled = false;

@@ -1,6 +1,20 @@
 version: '3.8'
 
 services:
+  db:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app-network
+
   webapp:
     build: ./src/application
     ports:
@@ -8,6 +22,7 @@ services:
     environment:
       - AI_SERVICE_URL=http://ai-service:8000
       - CRAWLER_SERVICE_URL=http://crawler:8001
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
     volumes:
       - ./src/application:/app
       - /app/node_modules
@@ -15,6 +30,7 @@ services:
     depends_on:
       - ai-service
       - crawler
+      - db
     networks:
       - app-network
 
@@ -24,8 +40,12 @@ services:
       dockerfile: src/crawler/Dockerfile
     ports:
       - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
     volumes:
       - ./utils:/app/utils
+    depends_on:
+      - db
     networks:
       - app-network
 
@@ -38,34 +58,48 @@ services:
     environment:
       - OLLAMA_URL=${OLLAMA_URL}
       - CRAWLER_URL=http://crawler:8001
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
       - ./models:/app/models
       - ./utils:/app/utils
       - ./scripts:/app/scripts
       - ./data:/app/data
       - ./src:/app/src
-    # depends_on:
-    #   - ollama
+    depends_on:
+      - db
+      # - ollama
     networks:
       - app-network
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ./models:/root/.ollama
-      - ./scripts/ollama_entrypoint.sh:/entrypoint.sh
-    entrypoint: ["/entrypoint.sh"]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    networks:
-      - app-network
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ./models:/root/.ollama
+  #     - ./scripts/ollama_entrypoint.sh:/entrypoint.sh
+  #   entrypoint: ["/entrypoint.sh"]
+  #   # deploy:               # Uncomment this section if using NVIDIA GPUs
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: 1
+  #   #           capabilities: [gpu]
+  #   networks:
+  #     - app-network
+
+  # ollama:    # new 
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ./models:/root/.ollama
+  #     - ./scripts/ollama_entrypoint.sh:/entrypoint.sh
+  #   entrypoint: ["/entrypoint.sh"]
+  #   networks:
+  #     - app-network
 
   ngrok:
     image: ngrok/ngrok:latest
@@ -82,4 +116,7 @@ services:
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  postgres_data:
 

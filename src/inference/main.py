@@ -1,12 +1,12 @@
 import os
 import sys
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import joblib
 import httpx
 # LangChain imports
-from langchain_ollama import ChatOllama
+# from langchain_ollama import ChatOllama # Rimosso l'import di Ollama
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -15,18 +15,20 @@ from langchain_core.runnables import RunnablePassthrough
 sys.path.append("/app")
 from utils.text_preprocessing import TextPreprocessor
 
+# Import new RAG SQL Service
+from rag_sql import RAGSQLService
 
 app = FastAPI()
 
 # Configuration
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
+# OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434") # Rimosso l'URL di Ollama
 CRAWLER_URL = os.getenv("CRAWLER_URL", "http://crawler:8001")
 MODEL_PATH = "/app/models/logistic_regression.pkl"
 VECTORIZER_PATH = "/app/models/vectorizer.pkl"
 
-# Model names
-SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "qwen3:0.6b")
-QA_MODEL = os.getenv("QA_MODEL", "qwen3:1.7b")
+# Model names (non più usati per il percorso text, Ollama ignorato)
+# SUMMARY_MODEL = os.getenv("SUMMARY_MODEL", "qwen3:0.6b")
+# QA_MODEL = os.getenv("QA_MODEL", "qwen3:1.7b")
 
 # Models DTOs
 class AskRequest(BaseModel):
@@ -36,17 +38,19 @@ class AskResponse(BaseModel):
     answer: str
     relevant: bool
     context_used: bool
+    dashboard_data: Optional[Dict[str, Any]] = None # New field for dashboard
 
 # Global variables
 classifier = None
 vectorizer = None
 preprocessor = None
-llm_summary = None
-llm_qa = None
+# llm_summary = None # Non usati in quanto Ollama è ignorato e la logica text è disabilitata
+# llm_qa = None      # Non usati in quanto Ollama è ignorato e la logica text è disabilitata
+rag_sql_service = None
 
 @app.on_event("startup")
 async def startup_event():
-    global classifier, vectorizer, preprocessor, llm_summary, llm_qa
+    global classifier, vectorizer, preprocessor, rag_sql_service # Rimosse llm_summary, llm_qa
     
     # 1. Load Scikit-Learn Models (Classification)
     try:
@@ -55,29 +59,19 @@ async def startup_event():
             vectorizer = joblib.load(VECTORIZER_PATH)
             print("Classifier and Vectorizer loaded successfully.")
         else:
-            print(f"Models not found at {MODEL_PATH} or {VECTORIZER_PATH}. Inference will fail.")
+            print(f"Models not found at {MODEL_PATH} or {VECTORIZER_PATH}. Classification will be skipped.")
     except Exception as e:
         print(f"Error loading models: {e}")
 
     # 2. Initialize Preprocessor
     preprocessor = TextPreprocessor(language="italian")
     
-    # 3. Initialize LangChain Ollama Chat Models
+    # 3. Inizializzazione RAG SQL Service (che ora usa gemini-3-pro-preview)
     try:
-        print(f"Initializing Ollama with URL: {OLLAMA_URL}")
-        llm_summary = ChatOllama(
-            base_url=OLLAMA_URL,
-            model=SUMMARY_MODEL,
-            temperature=0.2
-        )
-        llm_qa = ChatOllama(
-            base_url=OLLAMA_URL,
-            model=QA_MODEL,
-            temperature=0.7
-        )
-        print("LangChain Ollama instances initialized.")
+        rag_sql_service = RAGSQLService()
+        print("RAG SQL Service initialized with gemini-3-pro-preview.")
     except Exception as e:
-        print(f"Error initializing LangChain Ollama: {e}")
+        print(f"Error initializing RAG SQL Service: {e}")
 
 
 def classify_relevance(question: str) -> bool:
@@ -91,60 +85,38 @@ def classify_relevance(question: str) -> bool:
     prediction = classifier.predict(X)[0]
     return bool(prediction == 1)
 
-async def crawl_content() -> str:
-    """Fetches content from the crawler service asynchronously."""
-    async with httpx.AsyncClient(timeout=300.0) as client:
-        try:
-            print(f"Richiesta al crawler inviata a {CRAWLER_URL}/crawl...")
-            response = await client.post(f"{CRAWLER_URL}/crawl", json={"urls": []})
-            
-            if response.status_code != 200:
-                print(f"Crawler service returned status {response.status_code}: {response.text}")
-                return ""
-                
-            crawl_data = response.json()
-            # Default to empty list if results key is missing or None
-            results = crawl_data.get("results") or []
-            
-            full_text = ""
-            for i, res in enumerate(results):
-                try:
-                    url = res.get("url", "unknown_url")
-                    success = res.get("success", False)
-                    
-                    if success:
-                        content = res.get("content")
-                        if content is None:
-                            print(f"Warning: Result {i} for {url} success=True but content is None")
-                            continue
-                            
-                        if not isinstance(content, str):
-                            print(f"Warning: Result {i} for {url} content is not string (type: {type(content)})")
-                            content = str(content)
-                            
-                        full_text += content + "\n\n"
-                    else:
-                        error_msg = res.get("error", "Unknown error")
-                        print(f"Failed to crawl specific URL: {url} - Error: {error_msg}")
-                except Exception as inner_e:
-                    print(f"Error processing result {i}: {inner_e}")
-            
-            if not full_text:
-                print("Crawler returned no text content.")
-                
-            return full_text
-            
-        except Exception as e:
-            # Print full stack trace or detailed error to debug 'NoneType' issues
-            import traceback
-            traceback.print_exc()
-            print(f"Crawler request failed completely: {e}")
-            return ""
+# Funzione crawl_content ora commentata/ignorata per il percorso 'text'
+# async def crawl_content() -> str:
+#     print("Crawling logic bypassed for text queries as per user request.")
+#     return ""
 
 @app.post("/ask", response_model=AskResponse)
 async def ask(request: AskRequest):
-    # 1. Classification (Relevance Check)
-    # We still check if the question is about the University, but we don't judge the content yet.
+    # 0. Route Query (SQL vs Text)
+    route = "text"
+    if rag_sql_service:
+        route = rag_sql_service.route_query(request.question)
+        print(f"Query routing decision: {route}")
+    
+    if route == "sql" and rag_sql_service:
+        # Esegue la catena SQL (usa gemini-3-pro-preview)
+        result = rag_sql_service.execute_sql_chain(request.question)
+        if "error" in result:
+             return AskResponse(
+                answer=f"Ho provato a consultare il database ma ho riscontrato un errore: {result['error']}",
+                relevant=True,
+                context_used=True
+            )
+        
+        return AskResponse(
+            answer="Ho generato una dashboard con i dati richiesti.",
+            relevant=True,
+            context_used=True,
+            dashboard_data=result
+        )
+
+    # --- PERCORSO RAG TESTUALE (Summarization e Crawling disabilitati) ---
+    # La classificazione della rilevanza rimane, ma il resto della pipeline testuale è ignorato.
     try:
         is_relevant = classify_relevance(request.question)
         if not is_relevant:
@@ -155,76 +127,25 @@ async def ask(request: AskRequest):
             )
     except Exception as e:
         print(f"Classification error: {e}")
-        # Proceed if check fails
+        # Procede anche se la classificazione fallisce
 
-    # 2. Retrieval (Crawling)
-    # Now correctly awaited and async
-    raw_content = await crawl_content()
-    
-    # If crawling fails completely or returns nothing, we can't do RAG.
-    if not raw_content:
-        return AskResponse(
-            answer="Non sono riuscito a recuperare le informazioni dai siti web dell\'Università.",
-            relevant=True,
-            context_used=False
-        )
+    # raw_content = await crawl_content() # La funzione crawl_content è stata disabilitata o bypassata
 
-    # 3. LangChain Processing
-    
-    # A. Summarization Chain
-    # We truncate input to avoid context window explosion before summarization if needed.
-    truncated_content = raw_content[:15000] 
-    
-    summary_template = """Sei un assistente utile. Riassumi il seguente testo estratto dal sito web dell\'Università.
-Mantieni tutte le informazioni rilevanti, date, scadenze e contatti. Rimuovi solo le parti puramente tecniche o di navigazione (menu, cookie policy, ecc).
-
-Testo:
-{text}
-
-Riassunto:"""
-    
-    summary_prompt = PromptTemplate.from_template(summary_template)
-    summarize_chain = summary_prompt | llm_summary | StrOutputParser()
-
-    try:
-        # Execute Summarization
-        print("Inizio riassunto...")
-        summary_text = await summarize_chain.ainvoke({"text": truncated_content})
-        print("Riassunto completato.")
-    except Exception as e:
-        print(f"Summarization error: {e}")
-        summary_text = truncated_content[:3000] # Fallback to raw text
-
-    # B. QA Chain
-    qa_template = """Sei un assistente intelligente che risponde alla domanda dell\'utente basandoti SOLO sul contesto fornito qui sotto.
-
-                    Contesto:
-                    {context}
-
-                    Domanda: {question}
-
-                    Risposta:"""
-
-    qa_prompt = PromptTemplate.from_template(qa_template)
-    qa_chain = qa_prompt | llm_qa | StrOutputParser()
-
-    try:
-        # Execute QA
-        print("Generazione risposta...")
-        answer_text = await qa_chain.ainvoke({
-            "context": summary_text,
-            "question": request.question
-        })
-    except Exception as e:
-        print(f"QA error: {e}")
-        answer_text = "Si è verificato un errore durante la generazione della risposta."
+    # La logica di LangChain per riassunto e QA è disabilitata.
+    # truncated_content = raw_content[:15000] 
+    # summary_template = ...
+    # summarize_chain = ...
+    # summary_text = ...
+    # qa_template = ...
+    # qa_chain = ...
+    # answer_text = ...
 
     return AskResponse(
-        answer=answer_text,
+        answer="Al momento, la funzionalità di ricerca testuale (web crawling, riassunto e QA con LLM) è disabilitata per concentrarsi sulle query SQL. Posso aiutarti con domande che riguardano statistiche e dati accademici (es. 'media voti ingegneria informatica', 'quanti studenti in ingegneria gestionale?').",
         relevant=True,
-        context_used=True
+        context_used=False
     )
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "ollama_url": OLLAMA_URL}
+    return {"status": "ok"} # Rimosso 'ollama_url' in quanto Ollama è ignorato

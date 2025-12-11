@@ -16,3 +16,8 @@ wordcloud
 langchain
 langchain-community
 langchain-ollama
+langchain-google-genai
+langchain-postgres
+psycopg2-binary
+asyncpg
+faker
