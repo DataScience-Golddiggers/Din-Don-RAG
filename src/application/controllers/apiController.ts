@@ -22,7 +22,30 @@ export const askQuestion = async (req: Request, res: Response) => {
         const response = await axios.post(`${AI_SERVICE_URL}/ask`, { question });
         res.json(response.data);
     } catch (error: any) {
-        console.error('Error calling AI Service:', error.message);
+        console.error('Error calling AI Service (/ask):', error.message);
+        res.status(500).json({ error: 'Failed to get answer from AI service.' });
+    } finally {
+        isProcessing = false;
+    }
+};
+
+export const askLegacyQuestion = async (req: Request, res: Response) => {
+    if (isProcessing) {
+        return res.status(429).json({ error: 'System is busy. Please try again later.' });
+    }
+
+    const { question } = req.body;
+    if (!question) {
+        return res.status(400).json({ error: 'Question is required' });
+    }
+
+    isProcessing = true;
+
+    try {
+        const response = await axios.post(`${AI_SERVICE_URL}/ask_legacy`, { question });
+        res.json(response.data);
+    } catch (error: any) {
+        console.error('Error calling AI Service (/ask_legacy):', error.message);
         res.status(500).json({ error: 'Failed to get answer from AI service.' });
     } finally {
         isProcessing = false;

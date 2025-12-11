@@ -3,7 +3,6 @@ import json
 import logging
 from typing import Dict, Any, List, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from sqlalchemy import create_engine, text
@@ -28,23 +27,24 @@ class RAGSQLService:
             logger.error(f"Database connection failed: {e}")
             self.engine = None
         
-        # Initialize LLM (Prefer Gemini, fallback to Ollama)
+        # Initialize LLM (Prefer Gemini, fallback to Ollama if needed but strictly using gemini-2.5-flash as requested)
         if GEMINI_API_KEY:
             self.llm = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
+                model="gemini-2.5-flash-lite",
                 google_api_key=GEMINI_API_KEY,
                 temperature=0.1
             )
             self.llm_creative = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
+                model="gemini-2.5-flash-lite",
                 google_api_key=GEMINI_API_KEY,
                 temperature=0.7
             )
-            logger.info("Initialized Gemini API")
+            logger.info("Initialized Gemini API (gemini-2.5-flash)")
         else:
-            self.llm = ChatOllama(base_url=OLLAMA_URL, model="qwen3:1.7b", temperature=0.1)
-            self.llm_creative = ChatOllama(base_url=OLLAMA_URL, model="qwen3:1.7b", temperature=0.7)
-            logger.warning("Gemini API Key missing. Fallback to Ollama.")
+             # Fallback logic removed/simplified as we focus on Gemini
+             logger.warning("Gemini API Key missing.")
+             self.llm = None
+             self.llm_creative = None
 
         # --- Prompts ---
         
@@ -68,24 +68,44 @@ class RAGSQLService:
             Rispondi ESCLUSIVAMENTE con un oggetto JSON: {{"destination": "sql"}} oppure {{"destination": "text"}}
             """
         )
+
+        # 1.5 Planner Prompt (New)
+        self.planner_prompt = ChatPromptTemplate.from_template(
+            """Sei un Data Analyst senior. L'utente vuole una dashboard o delle statistiche.
+            Analizza la richiesta: "{question}"
+            
+            Scomponila in una lista di massimo 3 domande specifiche e distinte che possono essere risposte con query SQL separate.
+            Se la richiesta è semplice o specifica, genera una sola domanda.
+            Se chiede una "dashboard" o "panoramica", genera 2 o 3 aspetti diversi (es. trend temporale, distribuzione per categoria, ecc).
+            
+            Esempio Input: "Mostrami l'andamento degli studenti"
+            Esempio Output: ["Quanti studenti si sono iscritti per anno?", "Qual è la distribuzione degli studenti per corso di laurea?", "Qual è la media voti complessiva?"]
+            
+            Rispondi ESCLUSIVAMENTE con un JSON Array di stringhe.
+            """
+        )
         
         # 2. SQL Generation Prompt
         self.sql_prompt = ChatPromptTemplate.from_template(
             """Sei un esperto SQL PostgreSQL. Genera una query SQL per rispondere alla domanda.
             Usa SOLO le seguenti tabelle: studenti, corsi_laurea, insegnamenti, appelli, esami.
             
-            Schema rilevante:
-            - studenti(id, matricola, nome, cognome, corso_laurea_id, anno_iscrizione, status)
-            - corsi_laurea(id, nome, tipo_laurea)
-            - insegnamenti(id, nome, cfu, anno_corso, corso_laurea_id)
-            - esami(id, studente_id, appello_id, voto, lode, stato)
-            - appelli(id, insegnamento_id, data_appello)
+            Schema rilevante con Tipi di Dato:
+            - studenti(id INT, matricola TEXT, nome TEXT, cognome TEXT, corso_laurea_id INT, anno_iscrizione INT, status TEXT)
+              * NOTA: 'anno_iscrizione' è un INTERO (es. 2023). NON usare EXTRACT() su di esso. Usalo direttamente (es. anno_iscrizione = 2024).
+            - corsi_laurea(id INT, nome TEXT, tipo_laurea TEXT)
+            - insegnamenti(id INT, nome TEXT, cfu INT, anno_corso INT, corso_laurea_id INT)
+            - esami(id INT, studente_id INT, appello_id INT, voto INT, lode BOOLEAN, stato TEXT)
+              * NOTA: 'voto' è intero. 'stato' può essere 'SUPERATO', 'RESPINTO'.
+            - appelli(id INT, insegnamento_id INT, data_appello DATE)
+              * NOTA: 'data_appello' è DATE. Qui PUOI usare EXTRACT(YEAR FROM data_appello).
 
             Regole:
             - Non usare tabelle non elencate.
             - Usa JOIN corrette.
             - Se la domanda chiede medie, usa AVG().
             - Se chiede conteggi, usa COUNT().
+            - IMPORTANTE: Non usare EXTRACT(YEAR...) su 'anno_iscrizione' o 'anno_corso', sono già interi!
             - Restituisci SOLO la stringa SQL valida, senza markdown, senza premesse.
 
             Domanda: {question}
@@ -101,7 +121,7 @@ class RAGSQLService:
             
             Genera una configurazione Chart.js (type, data, options) in formato JSON valida per visualizzare questi dati.
             Scegli il tipo di grafico migliore (bar, pie, line) in base ai dati.
-            Assicurati che il JSON sia valido e parsabile. Non includere commenti o markdown.
+            IMPORTANTE: Restituisci SOLO il JSON grezzo. NON usare blocchi markdown (```json). NON aggiungere commenti.
             
             JSON Config:"""
         )
@@ -119,7 +139,6 @@ class RAGSQLService:
         if not self.engine: return
         try:
             with self.engine.connect() as conn:
-                # Use simple parameterized query. data and viz_config dumped to json string.
                 import json
                 conn.execute(
                     text("""
@@ -138,20 +157,17 @@ class RAGSQLService:
         except Exception as e:
             logger.error(f"Failed to save history: {e}")
 
-    def execute_sql_chain(self, question: str) -> Dict[str, Any]:
-        if not self.engine:
-            return {"error": "Database not available"}
-
+    def execute_single_sql_query(self, question: str) -> Optional[Dict]:
+        """Helper to execute a single question flow"""
         # 1. Generate SQL
         sql_chain = self.sql_prompt | self.llm | StrOutputParser()
         try:
             generated_sql = sql_chain.invoke({"question": question})
-            # Clean SQL
             generated_sql = generated_sql.replace("```sql", "").replace("```", "").strip()
-            logger.info(f"Generated SQL: {generated_sql}")
+            logger.info(f"Generated SQL for '{question}': {generated_sql}")
         except Exception as e:
              logger.error(f"SQL Gen error: {e}")
-             return {"error": "Failed to generate SQL"}
+             return None
 
         # 2. Execute SQL
         result_data = []
@@ -159,35 +175,71 @@ class RAGSQLService:
             with self.engine.connect() as conn:
                 result = conn.execute(text(generated_sql))
                 keys = result.keys()
-                # Serialize dates/decimals manually if needed, usually simple types are fine
-                result_data = []
                 for row in result.fetchall():
                     row_dict = {}
                     for k, v in zip(keys, row):
-                        row_dict[k] = str(v) # Convert everything to string for safety in JSON
+                        row_dict[k] = str(v)
                     result_data.append(row_dict)
         except Exception as e:
             logger.error(f"SQL Execution error: {e}")
             return {"error": str(e), "sql": generated_sql}
 
-        # 3. Generate Viz Config
+        # 3. Generate Viz Config (Robust Parsing)
+        viz_config = {}
         if result_data:
-            viz_chain = self.viz_prompt | self.llm_creative | JsonOutputParser()
+            # Use StrOutputParser instead of JsonOutputParser to handle markdown manually
+            viz_chain = self.viz_prompt | self.llm_creative | StrOutputParser()
             try:
-                # Limit data passed to LLM
-                viz_config = viz_chain.invoke({"data": str(result_data[:20]), "question": question})
+                raw_viz = viz_chain.invoke({"data": str(result_data[:20]), "question": question})
+                # Clean Markdown
+                cleaned_viz = raw_viz.replace("```json", "").replace("```", "").strip()
+                viz_config = json.loads(cleaned_viz)
             except Exception as e:
-                logger.error(f"Viz generation error: {e}")
+                logger.error(f"Viz generation error: {e}. Raw output was: {raw_viz if 'raw_viz' in locals() else 'N/A'}")
+                # Fallback: empty config, frontend should handle this or show data table
                 viz_config = {}
-        else:
-            viz_config = {}
 
         # 4. Save History
         self.save_dashboard_history(question, generated_sql, result_data, viz_config)
 
         return {
-            "type": "dashboard",
             "sql": generated_sql,
             "data": result_data,
-            "chart_config": viz_config
+            "chart_config": viz_config,
+            "title": question
+        }
+
+    def execute_sql_chain(self, main_question: str) -> Dict[str, Any]:
+        if not self.engine:
+            return {"error": "Database not available"}
+
+        # 1. Plan: Decompose question
+        planner_chain = self.planner_prompt | self.llm | JsonOutputParser()
+        try:
+            questions_list = planner_chain.invoke({"question": main_question})
+            if not isinstance(questions_list, list):
+                questions_list = [main_question]
+            logger.info(f"Dashboard Plan: {questions_list}")
+        except Exception as e:
+            logger.error(f"Planning error: {e}. Fallback to single query.")
+            questions_list = [main_question]
+
+        # Limit to 3 charts to avoid timeout/quota
+        questions_list = questions_list[:3]
+
+        dashboard_items = []
+        for q in questions_list:
+            item = self.execute_single_sql_query(q)
+            # Check if item is valid and not an error response
+            if item and not item.get("error"):
+                dashboard_items.append(item)
+            elif item and item.get("error"):
+                 logger.warning(f"Error in sub-query '{q}': {item['error']}")
+        
+        if not dashboard_items:
+             return {"error": "Failed to generate any charts."}
+
+        return {
+            "type": "multi-dashboard",
+            "charts": dashboard_items
         }

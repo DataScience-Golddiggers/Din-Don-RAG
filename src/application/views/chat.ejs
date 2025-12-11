@@ -65,20 +65,36 @@
                 appendMessage(data.answer, false);
                 
                 // Handle Dashboard / Chart
-                if (data.dashboard_data && data.dashboard_data.chart_config) {
-                    const chartId = 'chart-' + Date.now();
-                    const chartHtml = `
-                        <div class="chart-container" style="position: relative; height:300px; width:100%">
-                            <canvas id="${chartId}"></canvas>
-                        </div>
-                        <small class="text-muted">Generato da SQL: ${data.dashboard_data.sql}</small>
-                    `;
-                    appendMessage(chartHtml, false, true);
-                    
-                    // Render chart after DOM update
-                    setTimeout(() => {
-                        renderChart(chartId, data.dashboard_data.chart_config);
-                    }, 100);
+                if (data.dashboard_data) {
+                    // Normalize to array if single chart (backward compatibility)
+                    let charts = [];
+                    if (data.dashboard_data.type === 'multi-dashboard' && data.dashboard_data.charts) {
+                        charts = data.dashboard_data.charts;
+                    } else if (data.dashboard_data.chart_config) {
+                        charts = [data.dashboard_data];
+                    }
+
+                    charts.forEach((chartItem, index) => {
+                        if (chartItem.chart_config && Object.keys(chartItem.chart_config).length > 0) {
+                            const chartId = 'chart-' + Date.now() + '-' + index;
+                            const titleHtml = chartItem.title ? `<strong>${chartItem.title}</strong><br>` : '';
+                            const chartHtml = `
+                                <div class="chart-wrapper mb-3 p-2 border rounded">
+                                    ${titleHtml}
+                                    <div class="chart-container" style="position: relative; height:300px; width:100%">
+                                        <canvas id="${chartId}"></canvas>
+                                    </div>
+                                    <small class="text-muted" style="font-size:0.75rem">SQL: ${chartItem.sql}</small>
+                                </div>
+                            `;
+                            appendMessage(chartHtml, false, true);
+                            
+                            // Render chart after DOM update
+                            setTimeout(() => {
+                                renderChart(chartId, chartItem.chart_config);
+                            }, 150 * (index + 1));
+                        }
+                    });
                 }
 
             } else {

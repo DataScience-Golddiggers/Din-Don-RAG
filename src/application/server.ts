@@ -21,9 +21,11 @@ app.use('/js', express.static(path.join(process.cwd(), 'node_modules/bootstrap/d
 // Routes
 app.get('/', pageController.renderHome);
 app.get('/chat', pageController.renderChat);
+app.get('/legacy-chat', pageController.renderLegacyChat); // New legacy page
 app.get('/about', pageController.renderAbout);
 
 app.post('/api/ask', apiController.askQuestion);
+app.post('/api/ask-legacy', apiController.askLegacyQuestion); // New legacy API
 
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
