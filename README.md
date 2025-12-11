@@ -9,11 +9,12 @@
 ![NGROK](https://img.shields.io/badge/ngrok-140648?style=for-the-badge&logo=Ngrok&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-FFFFFF?style=for-the-badge&logo=ollama&logoColor=black)
 ![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
+![pgvector](https://img.shields.io/badge/pgvector-000000?style=for-the-badge&logo=postgresql&logoColor=white)
+![Google Gemini](https://img.shields.io/badge/Google%20Gemini-black?style=for-the-badge&logo=google&logoColor=white)
 ![Qwen](https://img.shields.io/badge/Qwen-3-blue?style=for-the-badge)
 ![macOS](https://img.shields.io/badge/mac%20os-000000?style=for-the-badge&logo=apple&logoColor=white)
 [![License](https://img.shields.io/badge/MIT-green?style=for-the-badge)](LICENSE)
-
-<!-- ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white) -->
 
 A containerized AI-powered web assistant. This solution leverages a microservices architecture to crawl university data, process it via NLP pipelines, and generate context-aware responses using local Large Language Models (LLMs).
 
@@ -21,11 +22,14 @@ A containerized AI-powered web assistant. This solution leverages a microservice
 
 The system is composed of the following Docker services:
 
-- **`webapp`**: Node.js/Express/TypeScript frontend (MVC) with Bootstrap 5. Handles user interaction and request concurrency locking.
-- **`ai-service`**: Python/FastAPI backend. Orchestrates the NLP pipeline using **LangChain**:
+- **`webapp`**: Node.js/Express/TypeScript frontend (MVC) with Bootstrap 5. Handles user interaction, request concurrency locking, and dynamic dashboard rendering.
+- **`ai-service`**: Python/FastAPI backend. Orchestrates the NLP pipeline using **LangChain** and integrates with **Google Gemini API**. It handles:
   - **Classification**: Scikit-learn Logistic Regression to filter relevant queries.
-  - **RAG (Retrieval-Augmented Generation)**: Summarization and QA chains powered by Qwen models via Ollama.
-- **`crawler`**: Python/FastAPI service using `crawl4ai` (Playwright) to fetch live content from UnivPM.
+  - **RAG (Retrieval-Augmented Generation)**: Summarization and QA chains powered by **Qwen models via Ollama** and context retrieved from **PostgreSQL with `pgvector`**.
+  - **Text-to-SQL**: Generates SQL queries for data analytics based on user input.
+  - **Data-to-Visualization**: Generates EJS/Chart.js snippets for dynamic dashboards.
+- **`db`**: PostgreSQL 16 with `pgvector` extension. Stores RAG documents, database schema information for Text-to-SQL, and dashboard history.
+- **`crawler`**: Python/FastAPI service using `crawl4ai` (Playwright) to fetch live content from UnivPM and populate the `rag_documents` table in PostgreSQL.
 - **`ollama`**: (Optional) Containerized LLM inference server. Can be replaced by a local instance for better performance on Apple Silicon/GPU.
 - **`ngrok`**: Exposes the application to the public internet.
 
